@@ -3,7 +3,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "vars": {
+    "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+    "LLM_MODEL": "llama-3.3-70b-versatile",
+    "LLM_TIMEOUT_MS": "15000",
+    "TOOL_TIMEOUT_MS": "10000",
+    "DATABASE_URL": "https://piuanfmdkifszvwqqiow.supabase.co"
+  }
   // Secrets (never here): LLM_API_KEY, DATABASE_SERVICE_KEY → `wrangler secret put`
   // Local dev: copy .dev.vars.example → .dev.vars and fill in values.
 }
