@@ -1,0 +1,147 @@
+import type { Hono } from 'hono'
+import type { Deps } from '../app'
+import type { Envelope } from '../contracts'
+import { CalendarCallSchema, FinancialCallSchema } from '../contracts'
+import type { ChatMessage, ToolCall } from '../llm/client'
+import { TOOL_DEFS } from '../llm/tools'
+import { buildSystemPrompt } from './persona'
+import { log, redactPhone } from '../lib/logger'
+
+const MAX_ITERATIONS = 3
+export const FALLBACK_REPLY =
+  "I'm having trouble pulling that up right now - give me a moment and try again."
+
+/** Validate + dispatch one LLM tool call to its in-process route. */
+async function dispatchTool(
+  app: Hono, call: ToolCall, envelope: Envelope, toolTimeoutMs: number,
+): Promise<string> {
+  let args: unknown
+  try {
+    args = JSON.parse(call.function.arguments)
+  } catch {
+    return JSON.stringify({ error: 'tool arguments were not valid JSON' })
+  }
+
+  let path: string
+  let body: Record<string, unknown>
+  if (call.function.name === 'financial_agent') {
+    const parsed = FinancialCallSchema.safeParse({ tool: 'financial_agent', ...(args as object) })
+    if (!parsed.success) return JSON.stringify({ error: 'invalid financial_agent args', details: parsed.error.flatten() })
+    path = '/agents/financial'
+    body = parsed.data
+  } else if (call.function.name === 'calendar_agent') {
+    const parsed = CalendarCallSchema.safeParse({ tool: 'calendar_agent', ...(args as object) })
+    if (!parsed.success) return JSON.stringify({ error: 'invalid calendar_agent args', details: parsed.error.flatten() })
+    path = '/agents/calendar'
+    body = { ...parsed.data, phone_number: envelope.from_number }
+  } else {
+    return JSON.stringify({ error: `unknown tool: ${call.function.name}` })
+  }
+
+  try {
+    const res = await Promise.race([
+      app.request(path, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('tool timeout')), toolTimeoutMs)),
+    ])
+    const text = await res.text()
+    return res.ok ? text : JSON.stringify({ error: `tool returned ${res.status}`, body: text })
+  } catch (e) {
+    return JSON.stringify({ error: `tool call failed: ${String(e)}` })
+  }
+}
+
+export async function runOrchestration(
+  deps: Deps, app: Hono, envelope: Envelope,
+): Promise<{ reply: string; conversationId: string }> {
+  const requestId = crypto.randomUUID().slice(0, 8)
+  const t0 = Date.now()
+
+  // 1. Idempotency: webhook retries get the stored reply, no LLM re-run.
+  const priorReply = await deps.db.findReplyByExternalId(envelope.external_id).catch(() => null)
+  const conversation = await deps.db.getOrCreateConversation(envelope.from_number)
+  if (priorReply !== null) {
+    log('info', 'orchestrate.replay', { requestId, external_id: envelope.external_id })
+    return { reply: priorReply, conversationId: conversation.id }
+  }
+
+  // 2. Load state + record inbound.
+  const recent = await deps.db.getRecentMessages(conversation.id, 10)
+  const company = conversation.last_company_id
+    ? await deps.db.getCompanyById(conversation.last_company_id).catch(() => null)
+    : null
+  await deps.db.appendMessage({
+    conversation_id: conversation.id, channel: envelope.channel, direction: 'in',
+    content: envelope.text, external_id: envelope.external_id,
+  }).catch((e) => log('error', 'db.append_in_failed', { requestId, error: String(e) }))
+
+  // 3. Build the transcript for the LLM.
+  const messages: ChatMessage[] = [
+    { role: 'system', content: buildSystemPrompt({
+      companyName: company?.name,
+      lastMetrics: conversation.last_metrics_discussed ?? undefined,
+    }) },
+    ...recent.map((m): ChatMessage => ({
+      role: m.direction === 'in' ? 'user' : 'assistant', content: m.content,
+    })),
+    { role: 'user', content: `[channel: ${envelope.channel}] ${envelope.text}` },
+  ]
+
+  // 4. Tool loop.
+  let reply = FALLBACK_REPLY
+  const toolsUsed: string[] = []
+  let lastCompanyNamed: string | null = null
+  let lastMetricsRequested: string | null = null
+  try {
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const assistant = await deps.llm.chat(messages, { tools: TOOL_DEFS })
+      messages.push(assistant)
+      if (!assistant.tool_calls?.length) {
+        reply = assistant.content ?? FALLBACK_REPLY
+        break
+      }
+      for (const call of assistant.tool_calls) {
+        toolsUsed.push(call.function.name)
+        try {
+          const args = JSON.parse(call.function.arguments) as Record<string, unknown>
+          if (typeof args.company_name === 'string') lastCompanyNamed = args.company_name
+          if (Array.isArray(args.requested_metrics)) lastMetricsRequested = args.requested_metrics.join(',')
+        } catch { /* dispatchTool reports the parse error to the LLM */ }
+        const result = await dispatchTool(app, call, envelope, deps.config.toolTimeoutMs)
+        messages.push({ role: 'tool', content: result, tool_call_id: call.id })
+      }
+      // Loop exhausted without a final answer → ask for composition without tools.
+      if (i === MAX_ITERATIONS - 1) {
+        const final = await deps.llm.chat(messages)
+        reply = final.content ?? FALLBACK_REPLY
+      }
+    }
+  } catch (e) {
+    log('error', 'orchestrate.llm_failed', { requestId, error: String(e) })
+    reply = FALLBACK_REPLY
+  }
+
+  // 5. Persist state + outbound (best-effort — never fail the reply).
+  const namedCompany = lastCompanyNamed
+    ? await deps.db.getCompanyByName(lastCompanyNamed).catch(() => null)
+    : null
+  await Promise.all([
+    deps.db.updateConversation(conversation.id, {
+      channel_last_used: envelope.channel,
+      ...(namedCompany ? { last_company_id: namedCompany.id } : {}),
+      ...(lastMetricsRequested ? { last_metrics_discussed: lastMetricsRequested } : {}),
+    }),
+    deps.db.appendMessage({
+      conversation_id: conversation.id, channel: envelope.channel, direction: 'out',
+      content: reply, external_id: `${envelope.external_id}:reply`,
+    }),
+  ]).catch((e) => log('error', 'db.persist_failed', { requestId, error: String(e) }))
+
+  log('info', 'orchestrate.done', {
+    requestId, channel: envelope.channel, from: redactPhone(envelope.from_number),
+    tools: toolsUsed, ms: Date.now() - t0,
+  })
+  return { reply, conversationId: conversation.id }
+}

@@ -36,7 +36,12 @@ describe('skeleton app', () => {
   })
 
   it('POST /orchestrate accepts a valid envelope and returns a reply string', async () => {
-    const res = await app().request('/orchestrate', {
+    const scriptedApp = createApp({
+      db: new MemoryDb(),
+      llm: new ScriptedLlm([{ role: 'assistant', content: 'hello from the analyst' }]),
+      config: testConfig,
+    })
+    const res = await scriptedApp.request('/orchestrate', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify(envelope),
     })

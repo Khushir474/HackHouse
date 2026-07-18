@@ -6,6 +6,7 @@ import type { LlmClient } from './llm/client'
 import { log, redactPhone } from './lib/logger'
 import { financialRoutes } from './agents/financial'
 import { calendarRoutes } from './agents/calendar'
+import { FALLBACK_REPLY, runOrchestration } from './orchestrator/loop'
 
 export type Deps = { db: Db; llm: LlmClient; config: AppConfig }
 
@@ -31,18 +32,13 @@ export function createApp(deps: Deps): Hono {
       requestId, channel: envelope.channel, from: redactPhone(envelope.from_number),
     })
 
-    const conversation = await deps.db.getOrCreateConversation(envelope.from_number)
-
-    // Skeleton (Sync 1): canned reply. Task 10 replaces this block with the tool loop.
-    const reply =
-      "DueBot here - the analyst brain is being wired up. Your channel integration works; ask me again after Sync 2."
-
-    await deps.db.appendMessage({
-      conversation_id: conversation.id, channel: envelope.channel,
-      direction: 'in', content: envelope.text, external_id: envelope.external_id,
-    }).catch((e) => log('error', 'db.append_in_failed', { requestId, error: String(e) }))
-
-    return c.json({ reply, conversation_id: conversation.id })
+    try {
+      const { reply, conversationId } = await runOrchestration(deps, app, envelope)
+      return c.json({ reply, conversation_id: conversationId })
+    } catch (e) {
+      log('error', 'orchestrate.failed', { requestId, error: String(e) })
+      return c.json({ reply: FALLBACK_REPLY, conversation_id: null })
+    }
   })
 
   return app
