@@ -91,14 +91,35 @@ async function sendSendBlue(toNumber, content) {
 }
 
 // --- Vapi custom-LLM webhook (voice) -----------------------------------
-// Vapi POSTs an OpenAI-style { messages: [...] } body and expects an
-// OpenAI-shaped chat.completion object back (non-streaming is fine).
+// Vapi's OpenAI-compat client always sends { stream: true } and expects
+// an SSE stream of chat.completion.chunk events, not a single JSON blob —
+// a plain res.json() here returns 200 but Vapi can't parse it, so nothing
+// gets spoken (looked like a silent hang).
 
-app.post('/voice', async (req, res) => {
+function streamChatCompletion(res, content) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  const id = `chatcmpl-${Date.now()}`;
+  const base = { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: 'duebot-orchestrator' };
+  res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }] })}\n\n`);
+  res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+// Must match CALL_START_SENTINEL in src/orchestrator/loop.ts.
+const CALL_START_SENTINEL = '__call_start__';
+
+app.post(['/voice', '/voice/chat/completions'], async (req, res) => {
   try {
     const { messages, call } = req.body;
     const lastUserMsg = [...(messages || [])].reverse().find(m => m.role === 'user');
-    const text = lastUserMsg ? lastUserMsg.content : '';
+    // No user turn yet = call just connected (assistant-speaks-first-with-model-
+    // generated-message mode) — ask Part B for a same-day recap or fresh greeting.
+    const text = lastUserMsg ? lastUserMsg.content : CALL_START_SENTINEL;
     const from_number = call?.customer?.number || 'unknown';
     // call.id is constant for the whole call; append turn index so each
     // turn gets a unique external_id (Part B dedupes/caches replies by it).
@@ -107,34 +128,10 @@ app.post('/voice', async (req, res) => {
     const envelope = toEnvelope({ channel: 'voice', from_number, text, external_id });
     const reply = await callOrchestrator(envelope);
 
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: 'duebot-orchestrator',
-      choices: [
-        {
-          index: 0,
-          message: { role: 'assistant', content: reply },
-          finish_reason: 'stop',
-        },
-      ],
-    });
+    streamChatCompletion(res, reply);
   } catch (err) {
     console.error('voice webhook error:', err);
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: 'duebot-orchestrator',
-      choices: [
-        {
-          index: 0,
-          message: { role: 'assistant', content: 'One sec, let me check on that — having a small hiccup, try again in a moment.' },
-          finish_reason: 'stop',
-        },
-      ],
-    });
+    streamChatCompletion(res, 'One sec, let me check on that — having a small hiccup, try again in a moment.');
   }
 });
 

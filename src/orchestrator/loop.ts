@@ -11,6 +11,30 @@ const MAX_ITERATIONS = 3
 export const FALLBACK_REPLY =
   "I'm having trouble pulling that up right now - give me a moment and try again."
 
+// Sent by the voice channel as envelope.text when a call connects, before the
+// caller has said anything. Not a real utterance — triggers a same-day
+// recap + "anything else?" instead of the normal tool loop. Channel-agent's
+// server.js must send this exact string.
+export const CALL_START_SENTINEL = '__call_start__'
+const FRESH_GREETING = "Hi, this is DueBot. What can I help you with today?"
+
+function isToday(isoTimestamp: string): boolean {
+  return isoTimestamp.slice(0, 10) === new Date().toISOString().slice(0, 10)
+}
+
+async function buildCallStartReply(deps: Deps, todayMessages: ChatMessage[]): Promise<string> {
+  if (todayMessages.length === 0) return FRESH_GREETING
+  try {
+    const assistant = await deps.llm.chat([
+      { role: 'system', content: 'Summarize the conversation below from earlier today in one short spoken sentence (under 30 words, numbers-first if any were discussed), then ask "Anything else I can help with?" No preamble, no extra commentary.' },
+      { role: 'user', content: todayMessages.map((m) => `${m.role}: ${m.content}`).join('\n') },
+    ])
+    return sanitizeReply(assistant.content ?? FALLBACK_REPLY)
+  } catch {
+    return `Welcome back. ${FRESH_GREETING}`
+  }
+}
+
 const TEXT_TOOL_CALL_RE = /<function=(\w+)>\s*(\{[\s\S]*?\})\s*(?:<\/function>)?/g
 
 /** Llama sometimes emits tool calls as text. Recover them into structured ToolCall objects. */
@@ -94,11 +118,27 @@ export async function runOrchestration(
     return { reply: priorReply, conversationId: conversation.id }
   }
 
-  // 2. Load state + record inbound.
-  const recent = await deps.db.getRecentMessages(conversation.id, 10)
+  // 2. Load state, scoped to today only — memory does not carry across days.
+  const recentAll = await deps.db.getRecentMessages(conversation.id, 50)
+  const recent = recentAll.filter((m) => isToday(m.created_at)).slice(-10)
   const company = conversation.last_company_id
     ? await deps.db.getCompanyById(conversation.last_company_id).catch(() => null)
     : null
+
+  // 2b. Call just connected, caller hasn't spoken yet: recap today so far (or
+  // greet fresh) instead of running the tool loop on a synthetic message.
+  if (envelope.text === CALL_START_SENTINEL) {
+    const reply = await buildCallStartReply(deps, recent.map((m): ChatMessage => ({
+      role: m.direction === 'in' ? 'user' : 'assistant', content: m.content,
+    })))
+    await deps.db.appendMessage({
+      conversation_id: conversation.id, channel: envelope.channel, direction: 'out',
+      content: reply, external_id: `${envelope.external_id}:reply`,
+    }).catch((e) => log('error', 'db.persist_failed', { requestId, error: String(e) }))
+    return { reply, conversationId: conversation.id }
+  }
+
+  // 2c. Record inbound.
   await deps.db.appendMessage({
     conversation_id: conversation.id, channel: envelope.channel, direction: 'in',
     content: envelope.text, external_id: envelope.external_id,
