@@ -20,7 +20,7 @@ export type ToolDef = {
 }
 
 export interface LlmClient {
-  chat(messages: ChatMessage[], opts?: { tools?: ToolDef[] }): Promise<ChatMessage>
+  chat(messages: ChatMessage[], opts?: { tools?: ToolDef[]; toolChoice?: 'auto' | 'required' }): Promise<ChatMessage>
 }
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>
@@ -35,7 +35,10 @@ export class OpenAiCompatClient implements LlmClient {
     private backoffMs = 300,
   ) {}
 
-  async chat(messages: ChatMessage[], opts: { tools?: ToolDef[] } = {}): Promise<ChatMessage> {
+  async chat(
+    messages: ChatMessage[],
+    opts: { tools?: ToolDef[]; toolChoice?: 'auto' | 'required' } = {},
+  ): Promise<ChatMessage> {
     return withRetry(
       async () => {
         const res = await this.fetchImpl(`${this.cfg.llmBaseUrl}/chat/completions`, {
@@ -47,7 +50,7 @@ export class OpenAiCompatClient implements LlmClient {
           body: JSON.stringify({
             model: this.cfg.llmModel,
             messages,
-            ...(opts.tools ? { tools: opts.tools, tool_choice: 'auto' } : {}),
+            ...(opts.tools ? { tools: opts.tools, tool_choice: opts.toolChoice ?? 'auto' } : {}),
             temperature: this.cfg.llmTemperature,
           }),
         })

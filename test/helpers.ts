@@ -11,8 +11,13 @@ export const testConfig: AppConfig = {
 export class ScriptedLlm implements LlmClient {
   constructor(private script: ChatMessage[]) {}
   calls: ChatMessage[][] = []
-  async chat(messages: ChatMessage[]): Promise<ChatMessage> {
+  optsLog: Array<{ toolChoice?: 'auto' | 'required' } | undefined> = []
+  async chat(
+    messages: ChatMessage[],
+    opts?: { tools?: unknown[]; toolChoice?: 'auto' | 'required' },
+  ): Promise<ChatMessage> {
     this.calls.push(messages)
+    this.optsLog.push(opts ? { toolChoice: opts.toolChoice } : undefined)
     const next = this.script.shift()
     if (!next) throw new Error('ScriptedLlm: script exhausted')
     return next

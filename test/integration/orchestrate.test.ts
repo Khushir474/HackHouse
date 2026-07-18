@@ -162,4 +162,19 @@ describe('POST /orchestrate with tool loop', () => {
     expect(body.reply).toContain('trouble')
     expect(body.conversation_id).toBeNull()
   })
+
+  it('forces a tool call when the first reply quotes numbers without using tools', async () => {
+    const llm = new ScriptedLlm([
+      finalMsg('Their concentration is about 32% and renewal is in 9 months.'),
+      toolCallMsg('financial_agent', { company_name: 'Acme Robotics', requested_metrics: ['concentration'] }),
+      finalMsg('Top three customers are 41% of ARR, and the largest is 19%.'),
+    ])
+    const app = createApp({ db, llm, config: testConfig })
+    const res = await post(app, envelope('how concentrated is their revenue?', 'msg_106'))
+    expect(res.status).toBe(200)
+    const body = await res.json() as { reply: string }
+    expect(body.reply).toContain('41%')
+    expect(body.reply).not.toContain('32%')
+    expect(llm.optsLog[1]?.toolChoice).toBe('required')
+  })
 })

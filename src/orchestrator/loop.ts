@@ -174,7 +174,15 @@ export async function runOrchestration(
   let lastMetricsRequested: string | null = null
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const assistant = await deps.llm.chat(messages, { tools: TOOL_DEFS })
+      let assistant = await deps.llm.chat(messages, { tools: TOOL_DEFS })
+      // A first-turn reply that quotes numbers without any tool call is a
+      // hallucination risk - force one tool round before accepting it.
+      if (i === 0 && !assistant.tool_calls?.length
+          && extractTextToolCalls(assistant.content ?? '').calls.length === 0
+          && /\d/.test(assistant.content ?? '')) {
+        log('warn', 'orchestrate.forced_tool_call', { requestId })
+        assistant = await deps.llm.chat(messages, { tools: TOOL_DEFS, toolChoice: 'required' })
+      }
       let toolCalls = assistant.tool_calls
       if (!toolCalls?.length) {
         const { calls, cleaned } = extractTextToolCalls(assistant.content ?? '')
