@@ -5,6 +5,7 @@ import type { Db } from './db/types'
 import type { LlmClient } from './llm/client'
 import { log, redactPhone } from './lib/logger'
 import { financialRoutes } from './agents/financial'
+import { calendarRoutes } from './agents/calendar'
 
 export type Deps = { db: Db; llm: LlmClient; config: AppConfig }
 
@@ -17,6 +18,7 @@ export function createApp(deps: Deps): Hono {
   })
 
   app.route('/agents/financial', financialRoutes(deps))
+  app.route('/agents/calendar', calendarRoutes(deps))
 
   app.post('/orchestrate', async (c) => {
     const parsed = EnvelopeSchema.safeParse(await c.req.json().catch(() => null))
