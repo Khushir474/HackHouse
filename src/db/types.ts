@@ -1,3 +1,5 @@
+export const OPEN_SLOTS_LIMIT = 6  // max open slots returned to the orchestrator per query
+
 export type ContactRole = 'CFO' | 'customer_reference'
 
 export type Conversation = {

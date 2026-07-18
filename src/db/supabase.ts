@@ -3,6 +3,21 @@ import type { AppConfig } from '../config'
 import type {
   Company, ContactRole, Conversation, ConversationPatch, Db, Message, NewMessage, SlotRow,
 } from './types'
+import { OPEN_SLOTS_LIMIT } from './types'
+
+const NUMERIC_COMPANY_FIELDS = [
+  'arr', 'arr_growth_yoy', 'gross_margin', 'net_burn_monthly', 'net_new_arr_monthly',
+  'cash_on_hand', 'cac', 'ltv', 'cac_payback_months', 'cac_payback_months_prior',
+  'top3_pct_arr', 'largest_customer_pct_arr', 'largest_customer_renewal_months',
+] as const
+
+function toCompany(row: Record<string, unknown>): Company {
+  const out = { ...row } as Record<string, unknown>
+  for (const f of NUMERIC_COMPANY_FIELDS) {
+    if (out[f] !== null && out[f] !== undefined) out[f] = Number(out[f])
+  }
+  return out as unknown as Company
+}
 
 export class SupabaseDb implements Db {
   private client: SupabaseClient
@@ -65,14 +80,14 @@ export class SupabaseDb implements Db {
       .limit(1)
       .maybeSingle()
     if (error) throw new Error(`companies select: ${error.message}`)
-    return (data as Company) ?? null
+    return data ? toCompany(data as Record<string, unknown>) : null
   }
 
   async getCompanyById(id: string): Promise<Company | null> {
     const { data, error } = await this.client
       .from('companies').select('*').eq('id', id).maybeSingle()
     if (error) throw new Error(`companies select: ${error.message}`)
-    return (data as Company) ?? null
+    return data ? toCompany(data as Record<string, unknown>) : null
   }
 
   async getOpenSlots(companyId: string, role: ContactRole): Promise<SlotRow[]> {
@@ -83,7 +98,7 @@ export class SupabaseDb implements Db {
       .eq('contact_role', role)
       .eq('is_booked', false)
       .order('slot_start', { ascending: true })
-      .limit(6)
+      .limit(OPEN_SLOTS_LIMIT)
     if (error) throw new Error(`calendar_slots select: ${error.message}`)
     return data as SlotRow[]
   }

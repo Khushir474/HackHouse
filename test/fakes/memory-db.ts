@@ -1,6 +1,7 @@
 import type {
   Company, ContactRole, Conversation, ConversationPatch, Db, Message, NewMessage, SlotRow,
 } from '../../src/db/types'
+import { OPEN_SLOTS_LIMIT } from '../../src/db/types'
 
 let n = 0
 const uid = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`
@@ -76,7 +77,7 @@ export class MemoryDb implements Db {
   }
 
   async getOpenSlots(companyId: string, role: ContactRole): Promise<SlotRow[]> {
-    return this.slots.filter((s) => s.company_id === companyId && s.contact_role === role && !s.is_booked)
+    return this.slots.filter((s) => s.company_id === companyId && s.contact_role === role && !s.is_booked).slice(0, OPEN_SLOTS_LIMIT)
   }
 
   async bookSlot(slotId: string, _phone: string, _purpose: string): Promise<SlotRow | null> {

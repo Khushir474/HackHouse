@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MemoryDb } from '../fakes/memory-db'
+import { OPEN_SLOTS_LIMIT } from '../../src/db/types'
 
 describe('MemoryDb (reference behavior for the Db port)', () => {
   let db: MemoryDb
@@ -40,5 +41,13 @@ describe('MemoryDb (reference behavior for the Db port)', () => {
     db.seedSlot({ company_id: co.id, contact_role: 'customer_reference', contact_name: 'Jordan Malik' })
     await db.bookSlot(s1.id, '+1555', 'x')
     expect(await db.getOpenSlots(co.id, 'CFO')).toHaveLength(0)
+  })
+
+  it('getOpenSlots caps results at OPEN_SLOTS_LIMIT', async () => {
+    const co = (await db.getCompanyByName('Acme'))!
+    for (let i = 0; i < 10; i++) {
+      db.seedSlot({ company_id: co.id, contact_role: 'CFO', contact_name: 'Priya Nair' })
+    }
+    expect(await db.getOpenSlots(co.id, 'CFO')).toHaveLength(OPEN_SLOTS_LIMIT)
   })
 })
