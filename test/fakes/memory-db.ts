@@ -8,7 +8,7 @@ const uid = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`
 
 const COMPANY_DEFAULTS: Omit<Company, 'id' | 'name'> = {
   stage: 'Series B', sector: 'Industrial automation',
-  arr: 12_000_000, arr_growth_yoy: 58, gross_margin: 64,
+  arr: 12_000_000, arr_growth_yoy: 58, gross_margin: 64, ebitda_margin: -24,
   net_burn_monthly: 700_000, net_new_arr_monthly: 330_000, cash_on_hand: 7_700_000,
   cac: 48_000, ltv: 210_000, cac_payback_months: 19, cac_payback_months_prior: 13,
   top3_pct_arr: 41, largest_customer_pct_arr: 19,
@@ -74,6 +74,10 @@ export class MemoryDb implements Db {
 
   async getCompanyById(id: string): Promise<Company | null> {
     return this.companies.find((c) => c.id === id) ?? null
+  }
+
+  async listCompanies(): Promise<Company[]> {
+    return [...this.companies]
   }
 
   async getOpenSlots(companyId: string, role: ContactRole): Promise<SlotRow[]> {

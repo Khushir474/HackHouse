@@ -88,7 +88,7 @@ Response (`FinancialResult`):
   "flags": ["Customer concentration is elevated"],
   "benchmarks": {
     "burn_multiple": "<1.5x good, >2x flag",
-    "rule_of_40": ">=40 healthy",
+    "rule_of_40": ">=40 healthy (YoY growth % + EBITDA margin %)",
     "ltv_cac": ">3x healthy",
     "runway": "<12mo flag",
     "concentration": "top3 >30% or largest >15% is material risk"
@@ -103,12 +103,30 @@ Response (`FinancialResult`):
 - `benchmarks` is optional — when present it's a record of metric name →
   benchmark description string.
 
+Semantics (Part A implementation notes):
+
+- Rule of 40 = `arr_growth_yoy + ebitda_margin` (EBITDA margin, not gross
+  margin — migration `0004_ebitda_margin.sql`). Gross margin stays in the
+  schema but is not a Rule of 40 input.
+- `flags` are scanned across ALL metrics regardless of `requested_metrics`
+  (deterministic priority, CAC payback first), so planted red flags surface
+  unprompted; `metrics` stays scoped to the request.
+- Guarded divisions: a metric that can't be evaluated is `null`, never
+  `NaN`/`Infinity`. Missing data is not flagged as bad performance (e.g.
+  cash-flow positive → `runway_months: null`, no flag).
+- Company matching is exact → unique prefix → unique contains
+  (case/whitespace-insensitive), resolved in code over the full roster.
+
 Error forms:
 
 - `400 { "error": "invalid_tool_call", "details": {...zod flatten...} }` —
   request failed schema validation.
-- `404 { "error": "company_not_found", "company_name": "<name>" }` — no
-  company in the dataset matches `company_name`.
+- `404 { "error": "company_not_found", "company_name": "<name>",
+  "known_companies": [...] }` — no company matches; the roster is included so
+  the orchestrator LLM can offer alternatives.
+- `404 { "error": "company_ambiguous", "company_name": "<name>",
+  "candidates": [...] }` — more than one company matches; the LLM should ask
+  the VC to pick.
 
 ## 3. Orchestrator → Calendar Agent
 
