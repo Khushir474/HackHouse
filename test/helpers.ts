@@ -3,7 +3,7 @@ import type { ChatMessage, LlmClient } from '../src/llm/client'
 
 export const testConfig: AppConfig = {
   llmBaseUrl: 'https://llm.example/v1', llmApiKey: 'k', llmModel: 'test-model',
-  llmTimeoutMs: 1000, toolTimeoutMs: 1000,
+  llmTimeoutMs: 1000, llmTemperature: 0.2, toolTimeoutMs: 1000,
   databaseUrl: 'https://db.example', databaseServiceKey: 'x',
   calendarProvider: 'seeded',
 }

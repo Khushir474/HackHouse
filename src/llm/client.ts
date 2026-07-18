@@ -48,7 +48,7 @@ export class OpenAiCompatClient implements LlmClient {
             model: this.cfg.llmModel,
             messages,
             ...(opts.tools ? { tools: opts.tools, tool_choice: 'auto' } : {}),
-            temperature: 0.2,
+            temperature: this.cfg.llmTemperature,
           }),
         })
         if (!res.ok) throw new HttpStatusError(res.status, await res.text())

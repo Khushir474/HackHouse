@@ -54,6 +54,16 @@ export function sanitizeReply(reply: string): string {
   return cleaned.length > 0 ? cleaned : FALLBACK_REPLY
 }
 
+/** Voice replies get spoken by TTS - strip markdown and symbols that read badly aloud. */
+export function formatForChannel(reply: string, channel: 'voice' | 'text'): string {
+  if (channel === 'text') return reply
+  return reply
+    .replace(/[*_#`>]/g, '')
+    .replace(/^\s*[-•]\s*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** Validate + dispatch one LLM tool call to its in-process route. */
 async function dispatchTool(
   app: Hono, call: ToolCall, envelope: Envelope, toolTimeoutMs: number, sharedSecret?: string,
@@ -120,7 +130,7 @@ export async function runOrchestration(
 
   // 2. Load state, scoped to today only — memory does not carry across days.
   const recentAll = await deps.db.getRecentMessages(conversation.id, 50)
-  const recent = recentAll.filter((m) => isToday(m.created_at)).slice(-10)
+  const recent = recentAll.filter((m) => isToday(m.created_at)).slice(-16)
   const company = conversation.last_company_id
     ? await deps.db.getCompanyById(conversation.last_company_id).catch(() => null)
     : null
@@ -128,9 +138,9 @@ export async function runOrchestration(
   // 2b. Call just connected, caller hasn't spoken yet: recap today so far (or
   // greet fresh) instead of running the tool loop on a synthetic message.
   if (envelope.text === CALL_START_SENTINEL) {
-    const reply = await buildCallStartReply(deps, recent.map((m): ChatMessage => ({
+    const reply = formatForChannel(await buildCallStartReply(deps, recent.map((m): ChatMessage => ({
       role: m.direction === 'in' ? 'user' : 'assistant', content: m.content,
-    })))
+    }))), envelope.channel)
     await deps.db.appendMessage({
       conversation_id: conversation.id, channel: envelope.channel, direction: 'out',
       content: reply, external_id: `${envelope.external_id}:reply`,
@@ -149,6 +159,7 @@ export async function runOrchestration(
     { role: 'system', content: buildSystemPrompt({
       companyName: company?.name,
       lastMetrics: conversation.last_metrics_discussed ?? undefined,
+      channel: envelope.channel,
     }) },
     ...recent.map((m): ChatMessage => ({
       role: m.direction === 'in' ? 'user' : 'assistant', content: m.content,
@@ -198,6 +209,7 @@ export async function runOrchestration(
     log('error', 'orchestrate.llm_failed', { requestId, error: String(e) })
     reply = FALLBACK_REPLY
   }
+  reply = formatForChannel(reply, envelope.channel)
 
   // 5. Persist state + outbound (best-effort — never fail the reply).
   const namedCompany = lastCompanyNamed
