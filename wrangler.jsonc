@@ -9,7 +9,10 @@
     "LLM_MODEL": "llama-3.3-70b-versatile",
     "LLM_TIMEOUT_MS": "15000",
     "TOOL_TIMEOUT_MS": "10000",
-    "DATABASE_URL": "https://piuanfmdkifszvwqqiow.supabase.co"
+    "DATABASE_URL": "https://piuanfmdkifszvwqqiow.supabase.co",
+    "CALENDAR_PROVIDER": "calcom",
+    "CALCOM_EVENT_TYPE_ID": "6363080",
+    "CALCOM_ATTENDEE_EMAIL": "rsusny@gmail.com"
   }
   // Secrets (never here): LLM_API_KEY, DATABASE_SERVICE_KEY → `wrangler secret put`
   // Local dev: copy .dev.vars.example → .dev.vars and fill in values.
