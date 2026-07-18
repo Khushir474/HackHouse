@@ -13,7 +13,7 @@ export const FALLBACK_REPLY =
 
 /** Validate + dispatch one LLM tool call to its in-process route. */
 async function dispatchTool(
-  app: Hono, call: ToolCall, envelope: Envelope, toolTimeoutMs: number,
+  app: Hono, call: ToolCall, envelope: Envelope, toolTimeoutMs: number, sharedSecret?: string,
 ): Promise<string> {
   let args: unknown
   try {
@@ -42,7 +42,12 @@ async function dispatchTool(
   try {
     const res = await Promise.race([
       app.request(path, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(sharedSecret ? { 'x-shared-secret': sharedSecret } : {}),
+        },
+        body: JSON.stringify(body),
       }),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error('tool timeout')), toolTimeoutMs)
@@ -112,7 +117,7 @@ export async function runOrchestration(
           if (typeof args.company_name === 'string') lastCompanyNamed = args.company_name
           if (Array.isArray(args.requested_metrics)) lastMetricsRequested = args.requested_metrics.join(',')
         } catch { /* dispatchTool reports the parse error to the LLM */ }
-        const result = await dispatchTool(app, call, envelope, deps.config.toolTimeoutMs)
+        const result = await dispatchTool(app, call, envelope, deps.config.toolTimeoutMs, deps.config.sharedSecret)
         messages.push({ role: 'tool', content: result, tool_call_id: call.id })
       }
       // Loop exhausted without a final answer → ask for composition without tools.

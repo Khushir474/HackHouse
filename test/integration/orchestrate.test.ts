@@ -85,6 +85,29 @@ describe('POST /orchestrate with tool loop', () => {
     expect(body.reply).toContain('trouble')
   })
 
+  it('forwards the shared secret to in-process tool dispatch so protected routes are not 401d', async () => {
+    const llm = new ScriptedLlm([
+      toolCallMsg('financial_agent', { company_name: 'Acme Robotics', requested_metrics: ['runway'] }),
+      finalMsg('Runway 11 months.'),
+    ])
+    const securedConfig = { ...testConfig, sharedSecret: 'test-secret' }
+    const app = createApp({ db, llm, config: securedConfig })
+    const res = await app.request('/orchestrate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shared-secret': 'test-secret' },
+      body: JSON.stringify(envelope('runway for Acme?', 'msg_106')),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { reply: string }
+    expect(body.reply).toBe('Runway 11 months.')
+
+    const toolMsg = llm.calls[1]!.find((m) => m.role === 'tool')!
+    const content = String(toolMsg.content)
+    expect(content).toMatch(/runway_months|11/)
+    expect(content).not.toContain('401')
+    expect(content.toLowerCase()).not.toContain('unauthorized')
+  })
+
   it('books a call end-to-end via the calendar tool', async () => {
     const slotId = db.slots[0]!.id
     const llm = new ScriptedLlm([
