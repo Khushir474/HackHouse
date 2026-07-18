@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../../src/app'
 import { MemoryDb } from '../fakes/memory-db'
 import { ScriptedLlm, testConfig } from '../helpers'
@@ -72,5 +72,23 @@ describe('POST /agents/calendar', () => {
     expect(body.status).toBe('error')
     const voltwaySlot = db.slots.find((s) => s.id === voltwaySlotId)!
     expect(voltwaySlot.is_booked).toBe(false)
+  })
+
+  it('notifies the injected calendar notifier on a successful booking', async () => {
+    const notifier = { notify: vi.fn().mockResolvedValue(true) }
+    const notifyingApp = createApp({ db, llm: new ScriptedLlm([]), config: testConfig, notifier })
+    const call = {
+      tool: 'calendar_agent', action: 'book', company_name: 'acme',
+      contact_role: 'CFO', slot_id: slotId, phone_number: '+15551234567',
+    }
+    const res = await notifyingApp.request('/agents/calendar', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(call),
+    })
+    const body = CalendarResultSchema.parse(await res.json())
+    if (body.status !== 'booked') throw new Error('expected booked')
+    expect(body.email_sent).toBe(true)
+    expect(notifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ start: body.slot.slot_start, companyName: 'Acme Robotics' }),
+    )
   })
 })

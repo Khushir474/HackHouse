@@ -7,8 +7,9 @@ import { log, redactPhone } from './lib/logger'
 import { financialRoutes } from './agents/financial'
 import { calendarRoutes } from './agents/calendar'
 import { FALLBACK_REPLY, runOrchestration } from './orchestrator/loop'
+import type { BookingNotifier } from './calendar/calcom'
 
-export type Deps = { db: Db; llm: LlmClient; config: AppConfig }
+export type Deps = { db: Db; llm: LlmClient; config: AppConfig; notifier?: BookingNotifier }
 
 export function createApp(deps: Deps): Hono {
   const app = new Hono()

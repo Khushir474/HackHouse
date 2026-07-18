@@ -6,6 +6,7 @@ const cfg: AppConfig = {
   llmBaseUrl: 'https://llm.example/v1', llmApiKey: 'k', llmModel: 'test-model',
   llmTimeoutMs: 1000, toolTimeoutMs: 1000,
   databaseUrl: 'https://db.example', databaseServiceKey: 'x',
+  calendarProvider: 'seeded',
 }
 
 function okResponse(message: unknown) {

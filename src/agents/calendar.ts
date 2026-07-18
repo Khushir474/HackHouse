@@ -47,12 +47,18 @@ export function calendarRoutes(deps: Deps): Hono {
     if (!won) {
       return c.json({ status: 'error', reason: 'That slot is no longer available - want me to check remaining times?' } satisfies CalendarResult)
     }
+    const emailSent = deps.notifier
+      ? await deps.notifier.notify({
+          start: won.slot_start, contactName: won.contact_name, companyName: company.name, purpose,
+        })
+      : undefined
     return c.json({
       status: 'booked', company_name: company.name, purpose,
       slot: {
         slot_id: won.id, contact_name: won.contact_name, contact_role: won.contact_role,
         slot_start: won.slot_start, slot_end: won.slot_end,
       },
+      ...(emailSent !== undefined ? { email_sent: emailSent } : {}),
     } satisfies CalendarResult)
   })
 

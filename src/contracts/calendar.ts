@@ -23,7 +23,10 @@ export type Slot = z.infer<typeof SlotSchema>
 
 export const CalendarResultSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('slots'), company_name: z.string(), slots: z.array(SlotSchema) }),
-  z.object({ status: z.literal('booked'), company_name: z.string(), slot: SlotSchema, purpose: z.string() }),
+  z.object({
+    status: z.literal('booked'), company_name: z.string(), slot: SlotSchema, purpose: z.string(),
+    email_sent: z.boolean().optional(),
+  }),
   z.object({ status: z.literal('error'), reason: z.string() }),
 ])
 export type CalendarResult = z.infer<typeof CalendarResultSchema>

@@ -19,3 +19,11 @@ DATABASE_SERVICE_KEY=your-service-role-key
 TOOL_TIMEOUT_MS=10000
 
 # SHARED_SECRET=team-agreed-value  # optional: when set, all routes except /health require x-shared-secret header
+
+# --- Optional calendar booking notifier (cal.com) ---
+# When enabled, a successful seeded-slot booking also creates a real cal.com
+# booking so a real confirmation email is sent — best-effort, never blocks booking.
+# CALENDAR_PROVIDER=calcom
+# CALCOM_API_KEY=cal_live_your-key-here
+# CALCOM_EVENT_TYPE_ID=123456
+# CALCOM_ATTENDEE_EMAIL=you@example.com

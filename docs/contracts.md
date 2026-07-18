@@ -174,6 +174,14 @@ Response (`CalendarResult`) is a discriminated union on `status`:
 }
 ```
 
+`email_sent` is an additive optional boolean on the `booked` variant. It is
+only present when the optional cal.com booking notifier is enabled
+(`CALENDAR_PROVIDER=calcom`) — in that case a successful seeded-slot booking
+also best-effort creates a real cal.com booking so a real confirmation email
+is sent, and `email_sent` reports whether that notification succeeded. When
+the notifier is disabled (the default), the field is omitted entirely and
+the response shape is unchanged.
+
 **`error`** — company not found, slot already taken, or a `book` call
 missing `slot_id`:
 
