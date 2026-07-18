@@ -1,5 +1,5 @@
 export class HttpStatusError extends Error {
-  constructor(public status: number, body: string) {
+  constructor(public status: number, public body: string) {
     super(`HTTP ${status}: ${body.slice(0, 300)}`)
   }
 }
