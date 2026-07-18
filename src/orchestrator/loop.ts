@@ -11,6 +11,25 @@ const MAX_ITERATIONS = 3
 export const FALLBACK_REPLY =
   "I'm having trouble pulling that up right now - give me a moment and try again."
 
+const TEXT_TOOL_CALL_RE = /<function=(\w+)>\s*(\{[\s\S]*?\})\s*(?:<\/function>)?/g
+
+/** Llama sometimes emits tool calls as text. Recover them into structured ToolCall objects. */
+export function extractTextToolCalls(content: string): { calls: ToolCall[]; cleaned: string } {
+  const calls: ToolCall[] = []
+  let i = 0
+  const cleaned = content.replace(TEXT_TOOL_CALL_RE, (_m, name: string, args: string) => {
+    calls.push({ id: `text_call_${++i}`, type: 'function', function: { name, arguments: args } })
+    return ''
+  }).trim()
+  return { calls, cleaned }
+}
+
+/** Strip any residual text-form tool-call fragments before a reply reaches a channel. */
+export function sanitizeReply(reply: string): string {
+  const cleaned = reply.replace(TEXT_TOOL_CALL_RE, '').replace(/<\/?function[^>]*>/g, '').trim()
+  return cleaned.length > 0 ? cleaned : FALLBACK_REPLY
+}
+
 /** Validate + dispatch one LLM tool call to its in-process route. */
 async function dispatchTool(
   app: Hono, call: ToolCall, envelope: Envelope, toolTimeoutMs: number, sharedSecret?: string,
@@ -105,12 +124,21 @@ export async function runOrchestration(
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const assistant = await deps.llm.chat(messages, { tools: TOOL_DEFS })
-      messages.push(assistant)
-      if (!assistant.tool_calls?.length) {
-        reply = assistant.content ?? FALLBACK_REPLY
-        break
+      let toolCalls = assistant.tool_calls
+      if (!toolCalls?.length) {
+        const { calls, cleaned } = extractTextToolCalls(assistant.content ?? '')
+        if (calls.length > 0) {
+          messages.push({ ...assistant, content: cleaned || null, tool_calls: calls })
+          toolCalls = calls
+        } else {
+          messages.push(assistant)
+          reply = sanitizeReply(assistant.content ?? FALLBACK_REPLY)
+          break
+        }
+      } else {
+        messages.push(assistant)
       }
-      for (const call of assistant.tool_calls) {
+      for (const call of toolCalls) {
         toolsUsed.push(call.function.name)
         try {
           const args = JSON.parse(call.function.arguments) as Record<string, unknown>
@@ -123,7 +151,7 @@ export async function runOrchestration(
       // Loop exhausted without a final answer → ask for composition without tools.
       if (i === MAX_ITERATIONS - 1) {
         const final = await deps.llm.chat(messages)
-        reply = final.content ?? FALLBACK_REPLY
+        reply = sanitizeReply(final.content ?? FALLBACK_REPLY)
       }
     }
   } catch (e) {

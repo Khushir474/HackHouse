@@ -126,6 +126,27 @@ describe('POST /orchestrate with tool loop', () => {
     expect(db.slots[0]!.is_booked).toBe(true)
   })
 
+  it('recovers a text-form tool call when the LLM emits <function=...> instead of tool_calls', async () => {
+    const llm = new ScriptedLlm([
+      {
+        role: 'assistant', content:
+          'Rule of 40: 122. Healthy. What\'s their runway? ' +
+          '<function=financial_agent>{"company_name":"Acme Robotics","requested_metrics":["runway"]}</function>',
+      },
+      finalMsg('Runway 11 months.'),
+    ])
+    const app = createApp({ db, llm, config: testConfig })
+    const res = await post(app, envelope('runway for Acme?', 'msg_107'))
+    expect(res.status).toBe(200)
+    const body = await res.json() as { reply: string }
+    expect(body.reply).toBe('Runway 11 months.')
+    expect(body.reply).not.toContain('<function')
+
+    const secondCallMessages = llm.calls[1]!
+    const toolMsg = secondCallMessages.find((m) => m.role === 'tool')!
+    expect(toolMsg.content).toMatch(/runway/)
+  })
+
   it('conversation creation failure still yields 200 + fallback reply, never a 500', async () => {
     class ThrowingDb extends MemoryDb {
       async getOrCreateConversation(_phone: string): Promise<never> {
