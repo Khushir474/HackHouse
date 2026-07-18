@@ -1,25 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApp } from '../../src/app'
 import { MemoryDb } from '../fakes/memory-db'
-import type { AppConfig } from '../../src/config'
-import type { ChatMessage, LlmClient } from '../../src/llm/client'
-
-export const testConfig: AppConfig = {
-  llmBaseUrl: 'https://llm.example/v1', llmApiKey: 'k', llmModel: 'test-model',
-  llmTimeoutMs: 1000, toolTimeoutMs: 1000,
-  databaseUrl: 'https://db.example', databaseServiceKey: 'x',
-}
-
-export class ScriptedLlm implements LlmClient {
-  constructor(private script: ChatMessage[]) {}
-  calls: ChatMessage[][] = []
-  async chat(messages: ChatMessage[]): Promise<ChatMessage> {
-    this.calls.push(messages)
-    const next = this.script.shift()
-    if (!next) throw new Error('ScriptedLlm: script exhausted')
-    return next
-  }
-}
+import { ScriptedLlm, testConfig } from '../helpers'
 
 const envelope = {
   channel: 'text', from_number: '+15551234567', text: 'hello',
@@ -60,5 +42,34 @@ describe('skeleton app', () => {
     expect(res.status).toBe(400)
     const body = await res.json() as { error: string }
     expect(body.error).toBe('invalid_envelope')
+  })
+})
+
+describe('optional shared-secret auth', () => {
+  const securedConfig = { ...testConfig, sharedSecret: 'team-secret' }
+
+  it('rejects /orchestrate without the x-shared-secret header when configured', async () => {
+    const securedApp = createApp({
+      db: new MemoryDb(), llm: new ScriptedLlm([]), config: securedConfig,
+    })
+    const res = await securedApp.request('/orchestrate', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(envelope),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('accepts /orchestrate with the correct x-shared-secret header when configured', async () => {
+    const securedApp = createApp({
+      db: new MemoryDb(),
+      llm: new ScriptedLlm([{ role: 'assistant', content: 'hello from the analyst' }]),
+      config: securedConfig,
+    })
+    const res = await securedApp.request('/orchestrate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shared-secret': 'team-secret' },
+      body: JSON.stringify(envelope),
+    })
+    expect(res.status).toBe(200)
   })
 })

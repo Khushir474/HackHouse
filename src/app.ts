@@ -13,6 +13,14 @@ export type Deps = { db: Db; llm: LlmClient; config: AppConfig }
 export function createApp(deps: Deps): Hono {
   const app = new Hono()
 
+  app.use('*', async (c, next) => {
+    const secret = deps.config.sharedSecret
+    if (secret && c.req.path !== '/health' && c.req.header('x-shared-secret') !== secret) {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
+    await next()
+  })
+
   app.get('/health', async (c) => {
     const dbOk = await deps.db.ping().catch(() => false)
     return c.json({ ok: dbOk, db: dbOk }, dbOk ? 200 : 503)
@@ -33,7 +41,7 @@ export function createApp(deps: Deps): Hono {
     })
 
     try {
-      const { reply, conversationId } = await runOrchestration(deps, app, envelope)
+      const { reply, conversationId } = await runOrchestration(deps, app, envelope, requestId)
       return c.json({ reply, conversation_id: conversationId })
     } catch (e) {
       log('error', 'orchestrate.failed', { requestId, error: String(e) })

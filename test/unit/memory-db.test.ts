@@ -23,6 +23,15 @@ describe('MemoryDb (reference behavior for the Db port)', () => {
     expect(await db.findReplyByExternalId('msg_2')).toBeNull()
   })
 
+  it('does not return an inbound message crafted with a reply-shaped external_id', async () => {
+    const c = await db.getOrCreateConversation('+15551234567')
+    await db.appendMessage({
+      conversation_id: c.id, channel: 'text', direction: 'in',
+      content: 'spoofed reply', external_id: 'msg_9:reply',
+    })
+    expect(await db.findReplyByExternalId('msg_9')).toBeNull()
+  })
+
   it('fuzzy-matches company names case-insensitively on substring', async () => {
     expect((await db.getCompanyByName('acme'))?.name).toBe('Acme Robotics')
     expect(await db.getCompanyByName('globex')).toBeNull()

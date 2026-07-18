@@ -28,6 +28,16 @@ Response:
 }
 ```
 
+`conversation_id` is `string | null` — it is only `null` on the total-failure
+fallback path (e.g. the database is unreachable), where `reply` is the
+generic fallback message and there is no conversation to key off of.
+
+If the team enables the optional shared secret (see below), send
+`x-shared-secret: <value>` on every request to this Worker except
+`GET /health`; without it every route returns `401 { "error": "unauthorized" }`.
+The secret is off by default — only send the header once Part B confirms
+`SHARED_SECRET` is set for the shared deployment.
+
 Field notes:
 
 | Field | Type | Notes |

@@ -56,6 +56,7 @@ export class SupabaseDb implements Db {
       .from('messages')
       .select('content')
       .eq('external_id', `${externalId}:reply`)
+      .eq('direction', 'out')
       .maybeSingle()
     if (error) throw new Error(`messages lookup: ${error.message}`)
     return data?.content ?? null

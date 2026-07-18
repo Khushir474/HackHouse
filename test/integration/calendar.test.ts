@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../../src/app'
 import { MemoryDb } from '../fakes/memory-db'
-import { ScriptedLlm, testConfig } from './skeleton.test'
+import { ScriptedLlm, testConfig } from '../helpers'
 import { CalendarResultSchema } from '../../src/contracts'
 import type { Hono } from 'hono'
 
@@ -59,5 +59,18 @@ describe('POST /agents/calendar', () => {
     })
     const body = CalendarResultSchema.parse(await res.json())
     expect(body.status).toBe('error')
+  })
+
+  it('rejects booking a slot that belongs to a different company', async () => {
+    const voltway = db.seedCompany({ name: 'Voltway' })
+    const voltwaySlotId = db.seedSlot({ company_id: voltway.id, contact_role: 'CFO', contact_name: 'Sam Reyes' }).id
+    const res = await post({
+      tool: 'calendar_agent', action: 'book', company_name: 'acme',
+      contact_role: 'CFO', slot_id: voltwaySlotId, phone_number: '+15551234567',
+    })
+    const body = CalendarResultSchema.parse(await res.json())
+    expect(body.status).toBe('error')
+    const voltwaySlot = db.slots.find((s) => s.id === voltwaySlotId)!
+    expect(voltwaySlot.is_booked).toBe(false)
   })
 })

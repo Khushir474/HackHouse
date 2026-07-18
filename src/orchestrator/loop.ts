@@ -38,25 +38,28 @@ async function dispatchTool(
     return JSON.stringify({ error: `unknown tool: ${call.function.name}` })
   }
 
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const res = await Promise.race([
       app.request(path, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('tool timeout')), toolTimeoutMs)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('tool timeout')), toolTimeoutMs)
+      }),
     ])
     const text = await res.text()
     return res.ok ? text : JSON.stringify({ error: `tool returned ${res.status}`, body: text })
   } catch (e) {
     return JSON.stringify({ error: `tool call failed: ${String(e)}` })
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 export async function runOrchestration(
-  deps: Deps, app: Hono, envelope: Envelope,
+  deps: Deps, app: Hono, envelope: Envelope, requestId: string,
 ): Promise<{ reply: string; conversationId: string }> {
-  const requestId = crypto.randomUUID().slice(0, 8)
   const t0 = Date.now()
 
   // 1. Idempotency: webhook retries get the stored reply, no LLM re-run.

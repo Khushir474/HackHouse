@@ -17,3 +17,5 @@ DATABASE_SERVICE_KEY=your-service-role-key
 
 # --- Tuning ---
 TOOL_TIMEOUT_MS=10000
+
+# SHARED_SECRET=team-agreed-value  # optional: when set, all routes except /health require x-shared-secret header

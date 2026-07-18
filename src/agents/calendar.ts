@@ -38,6 +38,10 @@ export function calendarRoutes(deps: Deps): Hono {
     if (!call.slot_id) {
       return c.json({ status: 'error', reason: 'book requires a slot_id from a prior check_availability' } satisfies CalendarResult)
     }
+    const openSlots = await deps.db.getOpenSlots(company.id, call.contact_role)
+    if (!openSlots.some((s) => s.id === call.slot_id)) {
+      return c.json({ status: 'error', reason: 'That slot does not match this company/contact - want me to re-check availability?' } satisfies CalendarResult)
+    }
     const purpose = call.purpose ?? `Follow-up diligence call re ${company.name}`
     const won = await deps.db.bookSlot(call.slot_id, call.phone_number ?? 'unknown', purpose)
     if (!won) {

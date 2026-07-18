@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApp } from '../../src/app'
 import { MemoryDb } from '../fakes/memory-db'
-import { ScriptedLlm, testConfig } from './skeleton.test'
+import { ScriptedLlm, testConfig } from '../helpers'
 import { FinancialResultSchema } from '../../src/contracts'
 
 function appWithAcme() {

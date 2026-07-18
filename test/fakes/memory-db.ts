@@ -60,7 +60,7 @@ export class MemoryDb implements Db {
   }
 
   async findReplyByExternalId(externalId: string): Promise<string | null> {
-    return this.messages.find((x) => x.external_id === `${externalId}:reply`)?.content ?? null
+    return this.messages.find((x) => x.direction === 'out' && x.external_id === `${externalId}:reply`)?.content ?? null
   }
 
   async getRecentMessages(conversationId: string, limit: number): Promise<Message[]> {

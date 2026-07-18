@@ -9,6 +9,7 @@ export type Env = {
   TOOL_TIMEOUT_MS?: string
   DATABASE_URL: string
   DATABASE_SERVICE_KEY: string
+  SHARED_SECRET?: string
 }
 
 const ConfigSchema = z.object({
@@ -19,6 +20,7 @@ const ConfigSchema = z.object({
   toolTimeoutMs: z.number().int().positive().default(10_000),
   databaseUrl: z.string().url(),
   databaseServiceKey: z.string().min(1),
+  sharedSecret: z.string().optional(),
 })
 export type AppConfig = z.infer<typeof ConfigSchema>
 
@@ -31,5 +33,6 @@ export function getConfig(env: Env): AppConfig {
     toolTimeoutMs: env.TOOL_TIMEOUT_MS ? Number(env.TOOL_TIMEOUT_MS) : undefined,
     databaseUrl: env.DATABASE_URL,
     databaseServiceKey: env.DATABASE_SERVICE_KEY,
+    sharedSecret: env.SHARED_SECRET,
   })
 }

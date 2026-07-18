@@ -43,5 +43,7 @@ C = Voice/Text channel adapters.
   `MemoryDb` + a scripted LLM — never hit the network in tests.
 - Local run: `npm run dev`, then `npm run chat "message"` from another shell.
 - Part C: POST the envelope (see `docs/contracts.md`) to `/orchestrate`;
-  the response is `{ reply, conversation_id }`. Send each webhook delivery's
-  ID as `external_id` — retries are safe (idempotent replay).
+  the response is `{ reply, conversation_id }`, where `conversation_id` is
+  `string | null` (`null` only on the internal-failure fallback reply). Send
+  each webhook delivery's ID as `external_id` — retries are safe (idempotent
+  replay).
