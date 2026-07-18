@@ -32,6 +32,7 @@ export type Company = {
   arr: number
   arr_growth_yoy: number
   gross_margin: number
+  ebitda_margin: number    // Rule of 40 input (0004 migration); percentage points
   net_burn_monthly: number
   net_new_arr_monthly: number
   cash_on_hand: number
@@ -63,6 +64,7 @@ export interface Db {
   getRecentMessages(conversationId: string, limit: number): Promise<Message[]>
   getCompanyByName(name: string): Promise<Company | null>
   getCompanyById(id: string): Promise<Company | null>
+  listCompanies(): Promise<Company[]>
   getOpenSlots(companyId: string, role: ContactRole): Promise<SlotRow[]>
   bookSlot(slotId: string, phone: string, purpose: string): Promise<SlotRow | null>
   ping(): Promise<boolean>

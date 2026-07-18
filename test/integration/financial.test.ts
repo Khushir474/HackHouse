@@ -25,7 +25,7 @@ describe('POST /agents/financial', () => {
     expect(body.metrics.burn_multiple).toBe(2.12)
   })
 
-  it('404s an unknown company', async () => {
+  it('404s an unknown company and lists the known roster', async () => {
     const res = await appWithAcme().request('/agents/financial', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -33,6 +33,26 @@ describe('POST /agents/financial', () => {
       }),
     })
     expect(res.status).toBe(404)
+    const body = await res.json() as { error: string; known_companies?: string[] }
+    expect(body.error).toBe('company_not_found')
+    expect(body.known_companies).toEqual(['Acme Robotics'])
+  })
+
+  it('404s an ambiguous company name with candidates', async () => {
+    const db = new MemoryDb()
+    db.seedCompany({ name: 'Acme Robotics' })
+    db.seedCompany({ name: 'Acme Health' })
+    const app = createApp({ db, llm: new ScriptedLlm([]), config: testConfig })
+    const res = await app.request('/agents/financial', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tool: 'financial_agent', company_name: 'acme', requested_metrics: ['runway'],
+      }),
+    })
+    expect(res.status).toBe(404)
+    const body = await res.json() as { error: string; candidates?: string[] }
+    expect(body.error).toBe('company_ambiguous')
+    expect(body.candidates).toEqual(['Acme Robotics', 'Acme Health'])
   })
 
   it('400s a contract violation', async () => {

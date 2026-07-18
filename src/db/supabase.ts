@@ -6,7 +6,7 @@ import type {
 import { OPEN_SLOTS_LIMIT } from './types'
 
 const NUMERIC_COMPANY_FIELDS = [
-  'arr', 'arr_growth_yoy', 'gross_margin', 'net_burn_monthly', 'net_new_arr_monthly',
+  'arr', 'arr_growth_yoy', 'gross_margin', 'ebitda_margin', 'net_burn_monthly', 'net_new_arr_monthly',
   'cash_on_hand', 'cac', 'ltv', 'cac_payback_months', 'cac_payback_months_prior',
   'top3_pct_arr', 'largest_customer_pct_arr', 'largest_customer_renewal_months',
 ] as const
@@ -88,6 +88,12 @@ export class SupabaseDb implements Db {
       .from('companies').select('*').eq('id', id).maybeSingle()
     if (error) throw new Error(`companies select: ${error.message}`)
     return data ? toCompany(data as Record<string, unknown>) : null
+  }
+
+  async listCompanies(): Promise<Company[]> {
+    const { data, error } = await this.client.from('companies').select('*')
+    if (error) throw new Error(`companies select: ${error.message}`)
+    return (data as Record<string, unknown>[]).map(toCompany)
   }
 
   async getOpenSlots(companyId: string, role: ContactRole): Promise<SlotRow[]> {
